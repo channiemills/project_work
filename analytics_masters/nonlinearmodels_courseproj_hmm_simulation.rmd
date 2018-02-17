@@ -1,0 +1,164 @@
+# HMM Data Simulation and Verification with DepmixS4 
+## Chantel Miller 
+
+Source: http://petewerner.blogspot.com/2014/09/hmm-example-with-depmixs4.html
+
+This simulation continues our marble example to discuss a simplistic application of the Hidden Markov Model using the depmixS4 package. We generate an observation sequence based on the initial state, transition, and emission probaiblities of our marble example then use the depmixS4 package to fit a model based on our assumptions of the data generating process. 
+
+```{r}
+library(depmixS4)
+```
+
+
+**Data Generation**
+Set up a three state process illustrating the marble jar examples. Each marble jar represents a state and produces a red, blue, or yellow marble with the following probabilities. 
+
+**Jar 1** 
+red = .8
+yellow = .1
+blue = .1
+
+**Jar 2** 
+red = .1
+yellow = .8
+blue = .1
+
+**Jar 3**
+red = .1
+yellow = .1
+blue = .8
+
+Generate stochastic *transition matrix* which defines transition between two states
+
+```{r}
+tmat1 <- matrix(c(0.6, 0.3, 0.1, 0.1, 0.6, 0.1, 0.3, 0.1, 0.6), nr=3)
+tmat1
+```
+
+
+Create vector representing three *hidden states* (marble jars)
+
+```{r}
+states1 <- c(1,2,3)
+```
+
+Establish number of observations
+
+```{r}
+n <- 1000
+```
+
+Establish initial state 
+
+Recall probability of initial states 
+
+pi.jar1 = .3 
+pi.jar2 = .5
+pi.jar3 = .2
+
+```{r}
+init_prob <- c(.3,.5,.2)
+
+set.seed(1)
+s01 <- sample(states1, 1, prob = init_prob)
+s01
+```
+
+
+Generate data frame of values for potential *observations*
+--A three column data frame of potential marble selections using emission probaiblities of that jar 
+
+```{r}
+set.seed(5)
+colors <- c("Red", "Yellow", "Blue")
+jar1.prob <- c(.8,.1,.1)
+jar2.prob <- c(.1,.8,.1)
+jar3.prob <- c(.1,.1,.8)
+
+obv1 <- data.frame(jar1 = sample(colors,n,prob = jar1.prob, replace = TRUE),
+                   jar2 = sample(colors,n,prob = jar2.prob, replace = TRUE),
+                   jar3 = sample(colors,n,prob = jar3.prob, replace = TRUE))
+
+# rename columns 
+head(obv1,10)
+```
+
+Initialize current state
+
+```{r}
+s1 <- s01
+s1
+```
+
+
+Initialize list to track state at each observation, this will allow us to observe when transitions occur.
+
+```{r}
+trans1 <- c(s01)
+```
+
+
+For each observation, determine state given current state and probability of changing states. This returns a list of states that we will then use to generate observations for.
+
+```{r}
+set.seed(1)
+for (i in 1:(n-1)) {
+  s1 <- sample(states1, size=1, prob=tmat1[s1, ])
+  trans1 <- c(trans1, s1)
+}
+
+head(trans1)
+```
+
+
+Generation trajectory of *observations* based on the state in _trans1_
+
+```{r}
+traj1 <- sapply(1:n, function(x) obv1[x,trans1[x]])
+head(traj1)
+```
+
+**Model Replication**
+
+Given a dataset of observations, _traj1_ where each observation was produced by one of three unknown states, we will use the
+depmixS4 package to attempt to predict the *states* that led to these observations and the *transition matrix* that determines the probability of moving from one state to another.
+
+
+Generate model specification based on observation data with three states 
+
+```{r}
+mod1 <- depmix(traj1 ~ 1, data=data.frame(traj1), nstates=3, family=multinomial(), instart = init_prob)
+mod1
+```
+
+
+Fit model
+
+```{r}
+f1 <- depmixS4::fit(mod1, verbose = FALSE, emcontrol=em.control(maxit = 1000))
+f1
+```
+
+Compare predicted transtion matrix to that used to generate data
+
+```{r}
+summary(f1)
+tmat1
+```
+
+Get estimated state for each observation
+```{r}
+est.state1 <- posterior(f1)
+```
+
+Compare Estimated States v Actual States 
+
+```{r}
+o <- par(no.readonly=T)
+par(mfrow=c(3,1))
+plot(1:n, traj1, type='l', main='Sample observations')
+plot(1:n, est.state1[,1], type='l', main='Estimated State')
+plot(1:n, trans1, type='l', main='Actual States')
+par(o)
+```
+

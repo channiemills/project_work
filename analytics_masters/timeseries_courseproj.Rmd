@@ -1,0 +1,348 @@
+---
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+# Final Project
+
+```{r}
+library(imputeTS)
+library(forecast)
+library(zoo)
+library(ggplot2)
+```
+
+
+### Read in CO2 data
+
+```{r}
+co2 <- read.csv("monthly co2.csv")
+```
+
+### Explore data
+
+```{r}
+str(co2)
+```
+
+```{r}
+head(co2)
+```
+
+### Trim to CO2 column and data since 1966
+
+```{r}
+co2 <- co2[,c("Year", "Month", "average")]
+colnames(co2) <- c("Year", "Month", "CO2")
+co2 <- co2[co2$Year >= 1966, ]
+co2.ts <- ts(co2$CO2, start = 1966, frequency = 12)
+head(co2.ts)
+```
+
+### Plot time series
+Observe any missing values or outliers
+
+```{r}
+#plotNA.distribution(co2.ts)
+plot.ts(co2.ts, main = "Atmostpheric CO2 Over Time", ylab = "Parts Per Million by Volume")
+ggplot(co2, aes(x=Year, y=CO2)) + 
+  geom_line() + 
+  labs(y = "CO2 Parts Per Million by Volume", title = "Atmospheric CO2 Over Time")
+```
+
+Data < 0 for atmospheric CO2 doesn't make sense so we will remove these and impute data.
+
+```{r}
+co2.ts <- ifelse(co2.ts < 0, NA, co2.ts)
+```
+
+```{r}
+plotNA.distribution(co2.ts)
+```
+
+# Impute missing values
+
+```{r}
+co2.ts.imp <- na.interpolation(co2.ts)
+```
+
+```{r}
+plotNA.distribution(co2.ts.imp)
+```
+
+_Conclusions:_ Plot of CO2 time series indicates positive, additive trend and annual seasonality.
+
+### ACF
+
+```{r}
+#acf(co2.ts.imp, lag = 100)
+# figure
+# subplot(2,1,1)
+# autocorr(co2.ts.imp)
+# subplot(2,1,2)
+# parcorr(co2.ts.imp)
+
+par(mfrow=c(2,1))
+plot(acf(co2.ts.imp, plot=FALSE), ylab = "CO2 Autocorrelation", main = "")
+pacf(co2.ts.imp)
+```
+Long memory auto correlation. The persistence of high values in acf
+plot indicate a long term positive trend. These results are consistent with our plot of the time series.
+
+### PACF
+
+```{r}
+pacf(co2.ts.imp,  main = "", ylab = "CO2 Partial Autocorrelation")
+```
+Long memory partial autocorrelation drops off around lag 20.
+
+_why doesn't x adjust with lag?_
+
+### Training and test
+```{r}
+co2.ts.train <- ts(co2.ts.imp[1:588], start = 1966, frequency = 12) # through 2014
+co2.ts.test <- ts(co2.ts.imp[589:600], start = 2015, frequency = 12) # all of 2015
+```
+
+### Seasonal ARIMA
+Seasonal time series
+
+```{r}
+sarima.mod <- auto.arima(co2.ts.train) # model through 2014
+summary(sarima.mod)
+```
+
+### Seasonal ARIMA Forecast
+
+```{r}
+(sarima.2015 <- forecast(sarima.mod, h=12))
+```
+
+```{r}
+plot(co2.ts.imp[1:600])
+lines(sarima.2015$mean, col = "green")
+```
+
+_Calculate error..._
+
+### Holt-Winters
+Time series with positive trend and seasonality
+
+```{r}
+hw.co2.mod <- HoltWinters(co2.ts.train)
+summary(hw.co2.mod)
+```
+
+```{r}
+hw.co2.mod
+```
+
+```{r}
+plot(hw.co2.mod)
+```
+
+```{r}
+plot(fitted(hw.co2.mod))
+```
+
+```{r}
+# forecast
+```
+
+
+### Read in annual temps
+
+```{r}
+temps <- read.csv("GlobalTemperatures.csv")
+#temps.ho <- read.csv("16-17_temps.csv")
+```
+
+```{r}
+names(temps)
+```
+
+```{r}
+temps <- temps[,c("dt", "LandAndOceanAverageTemperature")]
+temps$dt <- as.character(temps$dt)
+```
+
+
+Grab only data since 1966 
+
+```{r}
+temps <- temps[temps$dt>= "1966-01-01",]
+colnames(temps) <- c("dt", "temp")
+```
+
+Streamline holdout data - 2015
+
+```{r}
+# temps.ho$dt <- as.Date(as.yearmon(paste(temps.ho$year, temps.ho$month, "01", sep = "-"))) # get date format
+# temps.ho$dt <- as.character(temps.ho$dt) # match type in temps df
+# temps.ho <-temps.ho[,c("dt", "raw.temp")]
+# colnames(temps.ho) <- c("dt", "temp")
+# temps.full <- rbind(temps, temps.ho) # make a full list
+# temps.full.ts <- ts(temps.full$temp, start = 1966, frequency = 12)
+
+temps.ts <- ts(temps$temp, start = 1966, frequency = 12)
+temps.train <- temps[temps$dt<= "2014-12-01",]
+temps.test <- temps[temps$dt >= "2015-01-01",]
+```
+
+
+### Make Training Time Series
+
+```{r}
+temps.train.ts <- ts(temps.train$temp, start = 1966, frequency = 12)
+```
+
+
+### Plot missing values
+
+```{r}
+plotNA.distribution(temps.ts, main = "Global Temperature Over Time", ylab = "Temperature (°C)")
+```
+
+
+
+
+```{r}
+acf(temps$temp, main = "Temperature Autocorrelation")
+pacf(temps$temp, main = "Temperature Partial Autocorrelation", lag = 50) # these are better
+```
+
+### Plot both TS together
+
+```{r}
+# library(grid)
+# library(dplyr)
+# 
+# co2$dt <- as.Date(as.yearmon(paste(co2$Year, co2$Month, "01", sep = "-"))) # get dt column in co2
+# plot1 <- co2 %>%
+#   select(dt, CO2) %>%
+#   na.omit() %>%
+#   ggplot() + geom_line(aes(x = dt, y = CO2)) + ylab("Atmospheric CO2 ppm") + 
+#   theme_minimal() +
+#   theme(axis.title.x = element_blank())
+# 
+# plot2 <- temps %>%
+#   select(dt, temp) %>%
+#   ggplot() + geom_line(aes(x = dt, y = temp)) + ylab("Temperature (°C)") +
+#   theme_minimal() +
+#   theme(axis.title.x = element_blank())
+# 
+# grid.newpage()
+# grid.draw(rbind(ggplotGrob(plot1), ggplotGrob(plot2), size = "last"))
+
+##qplot(temps.ts) + geom_line(y=temps.ts)
+
+#ggplot(temps, aes(x=dt, y=temp)) + geom_line()
+```
+
+
+### Seasonal ARIMA
+Seasonal time series
+
+```{r}
+sarima.temps.mod <- auto.arima(temps.train.ts) # model through 2015
+summary(sarima.temps.mod)
+```
+
+### Seasonal ARIMA Forecast
+
+```{r}
+(sarima.temps.2015 <- forecast(sarima.temps.mod, h=12))
+```
+
+```{r}
+plot(sarima.temps.2015, xlab = "Time", ylab = "Temperature (°C)", main = "Global Temperature ARIMA Forecast")
+lines(temps.ts)
+```
+
+
+```{r}
+plot(temps.ts)
+lines(sarima.temps.2015$mean, col = "green")
+```
+
+### Analyze Residuals
+
+```{r}
+plot(sarima.temps.mod$residuals)
+```
+
+```{r}
+acf(sarima.temps.mod$residuals)
+```
+
+
+### Create function to calculate symmetric mean absolute percentage error (sMAPE) for forecast evaluation
+
+```{r}
+sMAPE <- function(actual, estimate) {
+    absDev <- abs(estimate - actual)
+    return(sum(absDev/(estimate + actual))/length(actual))
+}
+```
+
+```{r}
+(sMAPE.sarima.temps <- sMAPE(temps.test$temp, sarima.temps.2015$mean))
+```
+
+
+### Holt-Winters
+Time series with positive trend and seasonality
+
+```{r}
+hw.temps.mod <- HoltWinters(temps.train.ts)
+summary(hw.temps.mod)
+```
+
+```{r}
+hw.temps.mod
+```
+
+```{r}
+plot(hw.temps.mod)
+```
+
+```{r}
+plot(hw.temps.mod$fitted)
+```
+
+## Analyzing Residuals
+
+```{r}
+plot(hw.temps.mod$fitted[,1]-temps.train.ts)
+```
+Residuals seem like white noise
+
+```{r}
+acf(hw.temps.mod$fitted[,1]-temps.train.ts)
+```
+No residual autocorrelation
+
+```{r}
+(hw.temps.2015 <- forecast(hw.temps.mod, h=12))
+```
+
+```{r}
+plot(hw.temps.2015, main = "Global Temperature Holt-Winters Forecast", xlab = "Time", ylab = "Temperature (°C)")
+lines(ts(temps$temp))
+```
+
+
+### sMAPE Calculation
+
+```{r}
+(sMAPE.hw.2015 <- sMAPE(temps.test$temp, hw.temps.2015$mean))
+```
+
+
+
+
+
+
+
+
