@@ -14,7 +14,7 @@ start_time = timeit.default_timer()
 notes_dir = input("What is the path to the notes?") # feel free to replace with the path to avoid being prompted every execution
 
 notes = glob.glob(os.path.join(notes_dir, "*.txt"))
-note_cols = ['ScanType', 'ScanDate', 'ClinInfo', 'Technique', 'Comparison', 'Findings', 'Impressions', 'ElecSig', 'RawText']
+note_cols = ['ScanType', 'ScanDate', 'ClinInfo', 'Technique', 'Comparison', 'Findings', 'Impressions', 'ElecSig', 'Patient', 'RawText']
 
 # Helper functions for parsing
 def between(value, a, b):
@@ -65,9 +65,10 @@ def parse_note(text):
     comparison = between(text, 'COMPARISON: ', '\n\nFINDINGS:\n\n').strip()
     findings = between(text, '\n\nFINDINGS:\n\n', '\n\nIMPRESSION:\n\n').strip()
     impression = between(text, '\n\nIMPRESSION:\n\n', 'Report Electronically Signed:').strip()
-    elec_sig = after(text, 'Report Electronically Signed: ').strip()
+    elec_sig = between(text, 'Report Electronically Signed: ', '\nPatient:').strip()
+    patient = after(text, '\nPatient:')
     raw_text = text
-    return [scan_type, scan_date, clininfo, technique, comparison, findings, impression, elec_sig, raw_text]
+    return [scan_type, scan_date, clininfo, technique, comparison, findings, impression, elec_sig, patient, raw_text]
 
 
 def parsed_note_to_df(parsed_note_array):
@@ -86,13 +87,16 @@ def main():
     notes_str = []
 
     for note in notes:
+        filename = os.path.basename(note)
+        patient = "Patient: " + os.path.splitext(filename)[0]
+        #import pdb; pdb.set_trace()
         with open(note, 'r') as file:
-            notes_str.append(file.read())
+            notes_str.append(file.read()+patient)
 
     df_each_note = (parsed_note_to_df(parse_note(note)) for note in notes_str)
     df = pd.concat(df_each_note, ignore_index=True)
     df = df[note_cols]
-    df.to_csv('notes_df.csv')
+    df.to_csv('Z:\\FINAL OUTPUT v2\\NOTES\\notes_df.csv')
 
 
 # Parse
