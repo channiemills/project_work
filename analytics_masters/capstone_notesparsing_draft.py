@@ -59,13 +59,18 @@ def parse_note(text):
     Parse note and return array including each element.
     """
     scan_type = before(text, '**DATE<[').strip()
-    scan_date = between(text, '**DATE<[**', 'CLINICAL INFORMATION: ').strip()
-    clininfo = between(text, 'CLINICAL INFORMATION: ', ' TECHNIQUE: ').strip()
-    technique = between(text, 'TECHNIQUE: ', ' COMPARISON: ').strip()
-    comparison = between(text, 'COMPARISON: ', '\n\nFINDINGS:\n\n').strip()
-    findings = between(text, '\n\nFINDINGS:\n\n', '\n\nIMPRESSION:\n\n').strip()
-    impression = between(text, '\n\nIMPRESSION:\n\n', 'Report Electronically Signed:').strip()
-    elec_sig = between(text, 'Report Electronically Signed: ', '\nPatient:').strip()
+    scan_date = between(text, '**DATE<[**', 'CLINICAL INFORMATION:').strip()
+    clininfo = between(text, 'CLINICAL INFORMATION: ', 'TECHNIQUE: ').strip()
+    technique = between(text, 'TECHNIQUE: ', 'COMPARISON:').strip()
+    comparison = between(text, 'COMPARISON:', '\n\nFINDINGS:').strip()
+    findings = between(text, '\n\nFINDINGS:', '\n\nIMPRESSION:').strip()
+    # sometimes report electronically signed appears twice...
+    impression_temp = between(text, '\n\nIMPRESSION:', 'Report Electronically Signed:').strip()
+    if 'Report Electronically Signed:' in impression_temp:
+        impression = before(impression_temp, 'Report Electronically Signed:').strip()
+    else:
+        impression = impression_temp
+    elec_sig = between(text, 'Report Electronically Signed:', '\nPatient:').strip()
     patient = after(text, '\nPatient:')
     raw_text = text
     return [scan_type, scan_date, clininfo, technique, comparison, findings, impression, elec_sig, patient, raw_text]
@@ -89,14 +94,13 @@ def main():
     for note in notes:
         filename = os.path.basename(note)
         patient = "Patient: " + os.path.splitext(filename)[0]
-        #import pdb; pdb.set_trace()
         with open(note, 'r') as file:
             notes_str.append(file.read()+patient)
 
     df_each_note = (parsed_note_to_df(parse_note(note)) for note in notes_str)
     df = pd.concat(df_each_note, ignore_index=True)
     df = df[note_cols]
-    df.to_csv('Z:\\FINAL OUTPUT v2\\NOTES\\notes_df.csv')
+    df.to_csv('notes_df.csv')
 
 
 # Parse
